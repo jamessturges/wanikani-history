@@ -5,6 +5,7 @@ import os
 from azure.storage.blob import BlobServiceClient
 import azure.functions as func
 from datetime import datetime, timezone
+from jinja2 import Template
 
 # WaniKani information
 WANIKANI_BASE_URL = "api.wanikani.com"
@@ -28,7 +29,25 @@ app = func.FunctionApp()
 
 @app.timer_trigger(schedule="59 23 * * * *", arg_name="myTimer", run_on_startup=False,
                    use_monitor=False)
-def write_to_json(myTimer: func.TimerRequest) -> None:
+def write_to_blob_timer(myTimer: func.TimerRequest) -> None:
+    try:
+        write_to_blob()
+        return func.HttpResponse("Data update triggered successfully.", status_code=200)
+    except Exception as e:
+        logging.error(f"Failed to trigger data update. Error: {e}")
+        return func.HttpResponse("Failed to trigger data update.", status_code=499)
+
+@app.route(route="write_to_blob", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
+def write_to_blob_trigger(req: func.HttpRequest) -> func.HttpResponse:
+    try:
+        write_to_blob()
+        return func.HttpResponse("Data update triggered successfully.", status_code=200)
+    except Exception as e:
+        logging.error(f"Failed to trigger data update. Error: {e}")
+        return func.HttpResponse("Failed to trigger data update.", status_code=499)
+
+
+def write_to_blob() -> None:
     try:
         logger.info("Timer triggered. Starting data fetch process...")
         logger.info(f"API KEY: {WANIKANI_API_KEY}")
@@ -44,12 +63,16 @@ def write_to_json(myTimer: func.TimerRequest) -> None:
         logger.info(f"Enlightened: {srs_totals[8]}")
         logger.info(f"Burned: {srs_totals[9]}")
 
+        # Fetch user level
+        level = get_level()
+
         # Read existing data from the blob
         existing_data = read_blob()
 
         # Update data for today's date
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         existing_data[today] = {
+            "level": level,
             "apprentice": sum(srs_totals[i] for i in range(1, 5)),
             "guru": sum(srs_totals[i] for i in range(5, 7)),
             "master": srs_totals[7],
@@ -77,7 +100,6 @@ def read_blob():
         logger.warning(f"Blob not found or empty. Returning empty dictionary. Error: {e}")
         return {}
 
-
 def write_blob(data):
     """Write JSON data to Azure Blob Storage."""
     try:
@@ -96,6 +118,24 @@ def write_blob(data):
         logger.info("Blob successfully written.")
     except Exception as e:
         logger.error(f"Failed to write blob. Error: {e}")
+
+def get_level() -> int:
+    """Fetch level from WaniKani API"""
+    endpoint = "/v2/user"
+    try:
+        logger.info(f"Making API call to {WANIKANI_BASE_URL}{endpoint}")
+        conn = http.client.HTTPSConnection(WANIKANI_BASE_URL)
+        conn.request("GET", endpoint, headers=HEADERS)
+        response = conn.getresponse()
+        if response.status != 200:
+            raise Exception(f"API call failed with status code {response.status}")
+        data = json.loads(response.read().decode())
+        level = data['data']['level']
+        logger.info(f"User level fetched: {level}")
+        return level
+    except Exception as e:
+        logger.error(f"Error while fetching user level: {e}", exc_info=True)
+        raise
 
 def get_srs_totals() -> dict:
     """Fetch SRS totals from WaniKani API."""
@@ -155,3 +195,110 @@ def get_srs_totals() -> dict:
         raise
 
     return srs_totals
+
+@app.route(route="index", auth_level=func.AuthLevel.ANONYMOUS)
+def serve_website(req: func.HttpRequest) -> func.HttpResponse:
+    logging.info(f'Python HTTP trigger function processed a request from {req.url}')
+
+    try:
+        data = read_blob()
+        dates = sorted(data.keys())  # Sort dates in ascending order
+
+        if len(dates) < 2:
+            return func.HttpResponse("Not enough data to compare.", status_code=200)
+
+        def format_with_difference(current, previous):
+            difference = current - previous
+            return f"{current} ({difference:+d})"
+
+        rows = []
+        for i in range(1, len(dates)):
+            current_date = dates[i]
+            previous_date = dates[i - 1]
+
+            current_totals = data[current_date]
+            previous_totals = data[previous_date]
+
+            level = current_totals['level']
+            apprentice = format_with_difference(current_totals['apprentice'], previous_totals['apprentice'])
+            guru = format_with_difference(current_totals['guru'], previous_totals['guru'])
+            master = format_with_difference(current_totals['master'], previous_totals['master'])
+            enlightened = format_with_difference(current_totals['enlightened'], previous_totals['enlightened'])
+            burned = format_with_difference(current_totals['burned'], previous_totals['burned'])
+
+            current_total = current_totals['apprentice'] + current_totals['guru'] + current_totals['master'] + current_totals['enlightened'] + current_totals['burned']
+            previous_total = previous_totals['apprentice'] + previous_totals['guru'] + previous_totals['master'] + previous_totals['enlightened'] + previous_totals['burned']
+            total = format_with_difference(current_total, previous_total)
+
+            rows.append({
+                "date": current_date,
+                "level": level,
+                "apprentice": apprentice,
+                "guru": guru,
+                "master": master,
+                "enlightened": enlightened,
+                "burned": burned,
+                "total": total,
+            })
+
+        rows.reverse()  # Reverse the rows to display in descending order
+
+        table_html = """
+        <html>
+        <head>
+            <title>WaniKani History Totals</title>
+        </head>
+        <body>
+            <h1 style="display: inline;">SRS Totals</h1>
+            <button style="margin-left: 10px;" onclick="triggerDataUpdate()">Update Data</button>
+            <table border="1" style="margin-top: 10px;">
+            <tr>
+            <th>Date</th>
+            <th>Level</th>
+            <th>Apprentice</th>
+            <th>Guru</th>
+            <th>Master</th>
+            <th>Enlightened</th>
+            <th>Burned</th>
+            <th>Total</th>
+            </tr>
+            {% for row in rows %}
+            <tr>
+            <td>{{ row.date }}</td>
+            <td>{{ row.level }}</td>
+            <td>{{ row.apprentice }}</td>
+            <td>{{ row.guru }}</td>
+            <td>{{ row.master }}</td>
+            <td>{{ row.enlightened }}</td>
+            <td>{{ row.burned }}</td>
+            <td>{{ row.total }}</td>
+            </tr>
+            {% endfor %}
+            </table>
+            <script>
+            function triggerDataUpdate() {
+            fetch('/api/write_to_blob', {
+            method: 'POST'
+            })
+            .then(response => {
+            if (response.ok) {
+                location.reload(); // Refresh the page
+            } else {
+                alert('Failed to trigger data update.');
+            }
+            })
+            .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while triggering data update.');
+            });
+            }
+            </script>
+        </body>
+        </html>
+        """
+        template = Template(table_html)
+        rendered_html = template.render(rows=rows)
+        return func.HttpResponse(rendered_html, mimetype="text/html")
+    except Exception as e:
+        logging.error(f"Failed to serve JSON as table. Error: {e}")
+        return func.HttpResponse("An error occurred while serving the data.", status_code=500)
