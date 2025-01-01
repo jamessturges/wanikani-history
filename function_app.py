@@ -196,7 +196,7 @@ def get_srs_totals() -> dict:
 
     return srs_totals
 
-@app.route(route="index", auth_level=func.AuthLevel.ANONYMOUS)
+@app.route(route="/", auth_level=func.AuthLevel.ANONYMOUS)
 def serve_website(req: func.HttpRequest) -> func.HttpResponse:
     logging.info(f'Python HTTP trigger function processed a request from {req.url}')
 
@@ -246,10 +246,10 @@ def serve_website(req: func.HttpRequest) -> func.HttpResponse:
         table_html = """
         <html>
         <head>
-            <title>WaniKani History Totals</title>
+            <title>WaniKani History</title>
         </head>
         <body>
-            <h1 style="display: inline;">SRS Totals</h1>
+            <h1 style="display: inline;">WaniKani History</h1>
             <button style="margin-left: 10px;" onclick="triggerDataUpdate()">Update Data</button>
             <table border="1" style="margin-top: 10px;">
             <tr>
