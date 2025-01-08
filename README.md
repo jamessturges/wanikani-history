@@ -24,8 +24,8 @@ This Azure Function App fetches and displays WaniKani SRS stage totals and user 
     ```
 2. **Deploy to Azure**:
     - Use the Azure CLI or Visual Studio Code to deploy the Function App to Azure. Make sure to set the following environment variables:
-        WANIKANI_API_KEY=your_wanikani_api_key
-        BLOB_CONNECTION_STRING=your_blob_connection_string 
+       - WANIKANI_API_KEY=your_wanikani_api_key
+       - BLOB_CONNECTION_STRING=your_blob_connection_string 
 
 ## Usage
 
