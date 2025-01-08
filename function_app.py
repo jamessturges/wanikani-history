@@ -27,6 +27,7 @@ logger = logging.getLogger()
 
 app = func.FunctionApp()
 
+# Run right before midnight
 @app.timer_trigger(schedule="59 23 * * * *", arg_name="myTimer", run_on_startup=False,
                    use_monitor=False)
 def write_to_blob_timer(myTimer: func.TimerRequest) -> None:
@@ -37,7 +38,7 @@ def write_to_blob_timer(myTimer: func.TimerRequest) -> None:
         logging.error(f"Failed to trigger data update. Error: {e}")
         return func.HttpResponse("Failed to trigger data update.", status_code=499)
 
-@app.route(route="write_to_blob", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
+@app.route(route="/write_to_blob", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 def write_to_blob_trigger(req: func.HttpRequest) -> func.HttpResponse:
     try:
         write_to_blob()
@@ -277,7 +278,7 @@ def serve_website(req: func.HttpRequest) -> func.HttpResponse:
             </table>
             <script>
             function triggerDataUpdate() {
-            fetch('/api/write_to_blob', {
+            fetch('/write_to_blob', {
             method: 'POST'
             })
             .then(response => {

@@ -22,16 +22,10 @@ This Azure Function App fetches and displays WaniKani SRS stage totals and user 
     git clone https://github.com/yourusername/wanikani-history.git
     cd wanikani-history
     ```
-
-2. **Configure environment variables**:
-    - Create a `.env` file in the root directory and add the following environment variables:
-      ```env
-      WANIKANI_API_KEY=your_wanikani_api_key
-      BLOB_CONNECTION_STRING=your_blob_connection_string
-      ```
-
-3. **Deploy to Azure**:
-    - Use the Azure CLI or Visual Studio Code to deploy the Function App to Azure.
+2. **Deploy to Azure**:
+    - Use the Azure CLI or Visual Studio Code to deploy the Function App to Azure. Make sure to set the following environment variables:
+        WANIKANI_API_KEY=your_wanikani_api_key
+        BLOB_CONNECTION_STRING=your_blob_connection_string 
 
 ## Usage
 
@@ -44,7 +38,6 @@ This Azure Function App fetches and displays WaniKani SRS stage totals and user 
 - requirements.txt: Python dependencies.
 - host.json: Azure Functions host configuration.
 - local.settings.json: Local settings for Azure Functions.
-- routes.json: Custom routing configuration (if needed).
 
 ## Functions
 
